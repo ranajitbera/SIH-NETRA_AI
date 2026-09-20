@@ -8,7 +8,8 @@
   "main": "backend/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon backend/index.js"
+    "dev": "nodemon backend/index.js",
+    "start": "node backend/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

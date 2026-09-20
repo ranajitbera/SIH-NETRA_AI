@@ -34,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.camera_api import router as camera_router
 
 app = FastAPI(title="Netra AI Computer Vision Engine")
+node_api_url = os.getenv("NODE_API_URL", "http://localhost:5000").rstrip("/")
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,7 +57,7 @@ def home():
     return {
         "service": "Netra AI Computer Vision Engine",
         "status": "online",
-        "ingest_target": "http://localhost:5000/ingest",
-        "database_api": "http://localhost:5000/api",
+        "ingest_target": f"{node_api_url}/ingest",
+        "database_api": f"{node_api_url}/api",
         "roi_perimeter": "+6-Meter Restricted Yellow Bracket",
     }

@@ -11,7 +11,9 @@ function Register({ onLogin, onRegisterSuccess }) {
   const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const apiBase = window.location.port === "5173" ? "http://localhost:5000" : "";
+  const apiBase =
+    import.meta.env.VITE_API_URL ||
+    (window.location.port === "5173" ? "http://localhost:5000" : "");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,7 +54,9 @@ function Register({ onLogin, onRegisterSuccess }) {
 
       const data = await res.json();
       if (res.ok) {
-        setSuccessMsg(`Account registered! Officer Clearance: ${data.rank || rank}`);
+        setSuccessMsg(
+          `Account registered! Officer Clearance: ${data.rank || rank}`,
+        );
         setTimeout(() => {
           if (onRegisterSuccess) {
             onRegisterSuccess({
@@ -71,7 +75,9 @@ function Register({ onLogin, onRegisterSuccess }) {
       }
     } catch (err) {
       console.warn("Backend offline or registration error:", err);
-      setErrorMsg("Node.js API is offline. You can proceed with Demo Operator or retry.");
+      setErrorMsg(
+        "Node.js API is offline. You can proceed with Demo Operator or retry.",
+      );
     } finally {
       setLoading(false);
     }
@@ -81,11 +87,11 @@ function Register({ onLogin, onRegisterSuccess }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <div className="login-logo">
-            🛡️
-          </div>
+          <div className="login-logo">🛡️</div>
           <h1>Create Operator Account</h1>
-          <p className="login-subtitle">Register for Netra AI Tactical Border Surveillance</p>
+          <p className="login-subtitle">
+            Register for Netra AI Tactical Border Surveillance
+          </p>
           <div className="login-badge">SECURITY CLEARANCE REGISTRATION</div>
         </div>
 
@@ -174,7 +180,9 @@ function Register({ onLogin, onRegisterSuccess }) {
                 required
                 className={gender ? "has-value" : ""}
               >
-                <option value="" disabled>-- Select gender profile --</option>
+                <option value="" disabled>
+                  -- Select gender profile --
+                </option>
                 <option value="male">Male (Officer)</option>
                 <option value="female">Female (Officer)</option>
                 <option value="other">Other / Special Operator</option>
@@ -202,11 +210,7 @@ function Register({ onLogin, onRegisterSuccess }) {
 
           <div className="switch-page">
             <span>Already have security clearance? </span>
-            <button
-              type="button"
-              className="link-button"
-              onClick={onLogin}
-            >
+            <button type="button" className="link-button" onClick={onLogin}>
               Sign In to Command Center
             </button>
           </div>

@@ -1,0 +1,46 @@
+databases:
+  - name: ibvap-db
+    databaseName: ibvap
+    user: ibvap
+
+services:
+  - type: web
+    name: ibvap-api
+    runtime: node
+    rootDir: ranajit-apis
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ibvap-db
+          property: connectionString
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        sync: false
+      - key: PYTHON_API_URL
+        sync: false
+
+  - type: web
+    name: ibvap-ai
+    runtime: python
+    rootDir: soumil-backend/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: NODE_API_URL
+        sync: false
+
+  - type: web
+    name: ibvap-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_WS_URL
+        sync: false

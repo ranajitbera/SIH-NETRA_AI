@@ -6,7 +6,9 @@ function Login({ onLogin, onRegister }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const apiBase = window.location.port === "5173" ? "http://localhost:5000" : "";
+  const apiBase =
+    import.meta.env.VITE_API_URL ||
+    (window.location.port === "5173" ? "http://localhost:5000" : "");
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
@@ -31,11 +33,16 @@ function Login({ onLogin, onRegister }) {
           isDemo: false,
         });
       } else {
-        setErrorMsg(data.error || "Authentication failed. Check credentials or use Quick Demo Access.");
+        setErrorMsg(
+          data.error ||
+            "Authentication failed. Check credentials or use Quick Demo Access.",
+        );
       }
     } catch (err) {
       console.warn("Backend API unavailable:", err);
-      setErrorMsg("Node.js API offline. Use Quick Demo Access below to bypass.");
+      setErrorMsg(
+        "Node.js API offline. Use Quick Demo Access below to bypass.",
+      );
     } finally {
       setLoading(false);
     }
@@ -55,12 +62,14 @@ function Login({ onLogin, onRegister }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <div className="login-logo">
-            🛡️
-          </div>
+          <div className="login-logo">🛡️</div>
           <h1>Netra AI Command Center</h1>
-          <p className="login-subtitle">Intelligent Border Video Analytics Platform</p>
-          <div className="login-badge">AUTHORIZED PERSONNEL ONLY • DEFCON 2</div>
+          <p className="login-subtitle">
+            Intelligent Border Video Analytics Platform
+          </p>
+          <div className="login-badge">
+            AUTHORIZED PERSONNEL ONLY • DEFCON 2
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form" noValidate={false}>
@@ -98,7 +107,9 @@ function Login({ onLogin, onRegister }) {
           )}
 
           <button type="submit" className="login-button" disabled={loading}>
-            {loading ? "Verifying Credentials..." : "Authenticate & Enter Command Center"}
+            {loading
+              ? "Verifying Credentials..."
+              : "Authenticate & Enter Command Center"}
           </button>
 
           <button
@@ -111,11 +122,7 @@ function Login({ onLogin, onRegister }) {
 
           <div className="switch-page">
             <span>New Tactical Operator? </span>
-            <button
-              type="button"
-              className="link-button"
-              onClick={onRegister}
-            >
+            <button type="button" className="link-button" onClick={onRegister}>
               Register / Create Account
             </button>
           </div>

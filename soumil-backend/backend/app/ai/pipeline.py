@@ -34,8 +34,8 @@ class DetectionPipeline:
                  user_email: str = "operator@netra-ai.mil",
                  user_name: str = "Tactical Officer",
                  user_rank: str = "Captain",
-                 broadcaster_url: str = "http://localhost:5000/ingest",
-                 api_alert_url: str = "http://localhost:5000/api/alert"):
+                 broadcaster_url: str = None,
+                 api_alert_url: str = None):
         self.camera_id = camera_id
         self.camera_worker = camera_worker
         self.event_manager = event_manager
@@ -44,8 +44,9 @@ class DetectionPipeline:
         self.user_email = user_email
         self.user_name = user_name
         self.user_rank = user_rank
-        self.broadcaster_url = broadcaster_url
-        self.api_alert_url = api_alert_url
+        node_api_url = os.getenv("NODE_API_URL", "http://localhost:5000").rstrip("/")
+        self.broadcaster_url = broadcaster_url or f"{node_api_url}/ingest"
+        self.api_alert_url = api_alert_url or f"{node_api_url}/api/alert"
 
         self.tracker = Tracker()
         # Default static +6m perimeter fence zone (lower screen boundary: 0,450 to 1280,720)

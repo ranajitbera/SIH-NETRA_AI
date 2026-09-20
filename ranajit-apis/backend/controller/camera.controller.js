@@ -48,7 +48,7 @@ const resolveUserProfile = async (req, userId) => {
     try {
       const res = await pool.query(
         "SELECT fullname, email, rank FROM users WHERE id = $1",
-        [userId]
+        [userId],
       );
       if (res.rows.length > 0) {
         userEmail = userEmail || res.rows[0].email;
@@ -56,7 +56,10 @@ const resolveUserProfile = async (req, userId) => {
         userRank = userRank || res.rows[0].rank;
       }
     } catch (e) {
-      console.warn("[Camera Controller] Error looking up user profile:", e.message);
+      console.warn(
+        "[Camera Controller] Error looking up user profile:",
+        e.message,
+      );
     }
   }
 
@@ -65,6 +68,33 @@ const resolveUserProfile = async (req, userId) => {
     fullname: userName || req.user?.fullname || "Tactical Operator",
     rank: userRank || req.user?.rank || "Captain",
   };
+};
+
+const resolvePersistedUserId = async (req) => {
+  const userId = resolveUserId(req);
+  if (userId && userId !== 999999) {
+    const existingUser = await pool.query(
+      "SELECT id FROM users WHERE id = $1",
+      [userId],
+    );
+    if (existingUser.rows.length > 0) return existingUser.rows[0].id;
+  }
+
+  const result = await pool.query(
+    `INSERT INTO users (fullname, email, password, rank, role)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (email) DO UPDATE SET fullname = EXCLUDED.fullname
+     RETURNING id`,
+    [
+      "Demo Tactical Operator",
+      "demo.operator@netra-ai.mil",
+      "demo-account-disabled",
+      "Major General",
+      "operator",
+    ],
+  );
+
+  return result.rows[0].id;
 };
 
 // Helper to reliably locate the shared uploads folder
@@ -92,7 +122,9 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname) || ".mp4";
-    const cleanName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const cleanName = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9_-]/g, "_");
     cb(null, `${Date.now()}-${cleanName}${ext}`);
   },
 });
@@ -105,32 +137,46 @@ export const videoUploadMiddleware = multer({
 // Helper to notify Python AI backend to switch / start RTSP ingestion
 const triggerAiIngestion = async (cameraData) => {
   try {
-    const res = await fetch("http://127.0.0.1:8000/cameras/ingest_dynamic", {
+    const pythonApiUrl = process.env.PYTHON_API_URL || "http://127.0.0.1:8000";
+    const res = await fetch(`${pythonApiUrl}/cameras/ingest_dynamic`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(cameraData),
       signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
-    console.log("[Camera Controller] Python AI dynamic ingestion response:", data);
+    console.log(
+      "[Camera Controller] Python AI dynamic ingestion response:",
+      data,
+    );
   } catch (err) {
-    console.warn("[Camera Controller] Note: Python AI pipeline dynamic trigger:", err.message);
+    console.warn(
+      "[Camera Controller] Note: Python AI pipeline dynamic trigger:",
+      err.message,
+    );
   }
 };
 
 export const uploadVideoCameraController = async (req, res) => {
   try {
-    const resolvedUserId = resolveUserId(req);
-    const userId = resolvedUserId || 999999;
-    const isDemo = userId === 999999;
+    const userId = (await resolvePersistedUserId(req)) || 999999;
 
     if (!req.file) {
-      return res.status(400).json({ error: "Please select a valid video file (.mp4, .avi, .mkv, .mov) to upload." });
+      return res.status(400).json({
+        error:
+          "Please select a valid video file (.mp4, .avi, .mkv, .mov) to upload.",
+      });
     }
 
     const videoPath = req.file.path;
-    const cameraName = (req.body.cameraName || req.file.originalname || "Uploaded Recon Video").trim();
-    const location = (req.body.location || "Sector Tactical Recon Ground").trim();
+    const cameraName = (
+      req.body.cameraName ||
+      req.file.originalname ||
+      "Uploaded Recon Video"
+    ).trim();
+    const location = (
+      req.body.location || "Sector Tactical Recon Ground"
+    ).trim();
 
     // Set other cameras for this user to inactive so uploaded video is primary
     await pool.query(
@@ -179,13 +225,19 @@ export const uploadVideoCameraController = async (req, res) => {
     });
   } catch (err) {
     console.error("Error in uploadVideoCameraController:", err.message);
-    return res.status(500).json({ error: "Failed to upload and process video." });
+    return res
+      .status(500)
+      .json({ error: "Failed to upload and process video." });
   }
 };
 
 export const getUserCamerasController = async (req, res) => {
   try {
-    const userId = resolveUserId(req);
+    const resolvedUserId = resolveUserId(req);
+    const userId =
+      resolvedUserId === 999999
+        ? await resolvePersistedUserId(req)
+        : resolvedUserId;
 
     if (userId) {
       const result = await pool.query(
@@ -235,7 +287,12 @@ export const addUserCameraController = async (req, res) => {
       .replace(/^https:\/\/ip:/i, "https://");
 
     // Auto-normalize phone camera links without protocol (e.g. 192.168.0.133:8080 or 192.168.0.133:8554)
-    if (!rtspStream.includes("://") && !rtspStream.startsWith("/") && !rtspStream.match(/^[a-zA-Z]:\\/) && !rtspStream.match(/^\d+$/)) {
+    if (
+      !rtspStream.includes("://") &&
+      !rtspStream.startsWith("/") &&
+      !rtspStream.match(/^[a-zA-Z]:\\/) &&
+      !rtspStream.match(/^\d+$/)
+    ) {
       if (rtspStream.includes(":8080")) {
         rtspStream = `http://${rtspStream}`;
       } else if (rtspStream.includes(":8554") || rtspStream.includes(":554")) {
@@ -256,9 +313,7 @@ export const addUserCameraController = async (req, res) => {
 
     const name = (cameraName || "Tactical Perimeter Cam").trim();
     const loc = (location || "Perimeter Sector Alpha").trim();
-    const resolvedUserId = resolveUserId(req);
-    const userId = resolvedUserId || 999999;
-    const isDemo = userId === 999999;
+    const userId = (await resolvePersistedUserId(req)) || 999999;
 
     if (!rtspStream) {
       return res.status(400).json({
@@ -322,7 +377,11 @@ export const addUserCameraController = async (req, res) => {
 export const deleteUserCameraController = async (req, res) => {
   try {
     const { cameraId } = req.params;
-    const userId = resolveUserId(req);
+    const resolvedUserId = resolveUserId(req);
+    const userId =
+      resolvedUserId === 999999
+        ? await resolvePersistedUserId(req)
+        : resolvedUserId;
 
     let result;
     if (userId) {
@@ -403,14 +462,12 @@ export const deleteCameraController = deleteUserCameraController;
 export const activateCameraController = async (req, res) => {
   try {
     const { cameraId } = req.params;
-    const resolvedUserId = resolveUserId(req);
-    const userId = resolvedUserId || 999999;
-    const isDemo = userId === 999999;
+    const userId = (await resolvePersistedUserId(req)) || 999999;
 
     // Set other cameras inactive
     await pool.query(
       `UPDATE user_cameras SET is_active = false WHERE user_id = $1`,
-      [userId]
+      [userId],
     );
 
     // Set selected camera active
@@ -426,7 +483,7 @@ export const activateCameraController = async (req, res) => {
         location,
         status,
         is_active AS "isActive"`,
-      [cameraId, userId]
+      [cameraId, userId],
     );
 
     if (result.rows.length === 0) {

@@ -35,7 +35,9 @@ class ErrorBoundary extends React.Component {
           }}
         >
           <div style={{ fontSize: "48px", marginBottom: "16px" }}>🛡️</div>
-          <h2 style={{ fontSize: "22px", color: "#f87171", marginBottom: "8px" }}>
+          <h2
+            style={{ fontSize: "22px", color: "#f87171", marginBottom: "8px" }}
+          >
             Tactical Command Center Recovery
           </h2>
           <p
@@ -47,7 +49,8 @@ class ErrorBoundary extends React.Component {
               lineHeight: "1.6",
             }}
           >
-            A rendering anomaly was safely intercepted. Surveillance state and backend telemetry remain active.
+            A rendering anomaly was safely intercepted. Surveillance state and
+            backend telemetry remain active.
           </p>
           <button
             type="button"
@@ -95,11 +98,13 @@ function App() {
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(Date.now());
   const wsRef = useRef(null);
+  const liveFrameUrlRef = useRef(null);
 
   // Dynamic Backend Data
   const [cameras, setCameras] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [activeCameraId, setActiveCameraId] = useState(null);
+  const activeCameraIdRef = useRef(null);
   const [alertFilter, setAlertFilter] = useState("all");
   const [syncing, setSyncing] = useState(false);
   const [militaryTime, setMilitaryTime] = useState("");
@@ -115,7 +120,9 @@ function App() {
   const [addCamLoading, setAddCamLoading] = useState(false);
   const [addCamError, setAddCamError] = useState("");
 
-  const apiBase = window.location.port === "5173" ? "http://localhost:5000" : "";
+  const apiBase =
+    import.meta.env.VITE_API_URL ||
+    (window.location.port === "5173" ? "http://localhost:5000" : "");
 
   // Live Military Clock (Zulu + Local)
   useEffect(() => {
@@ -139,8 +146,12 @@ function App() {
       try {
         setWsStatus("connecting");
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = window.location.port === "5173" ? "localhost:5000" : window.location.host;
-        const wsUrl = `${protocol}//${host}/stream`;
+        const wsBase =
+          import.meta.env.VITE_WS_URL ||
+          (window.location.port === "5173"
+            ? `${protocol}//localhost:5000`
+            : `${protocol}//${window.location.host}`);
+        const wsUrl = `${wsBase.replace(/\/$/, "")}/stream`;
 
         const ws = new WebSocket(wsUrl);
         ws.binaryType = "blob";
@@ -148,7 +159,10 @@ function App() {
 
         ws.onopen = () => {
           if (!active) return;
-          console.log("[Netra AI WebSocket] Connected to tactical video stream on", wsUrl);
+          console.log(
+            "[Netra AI WebSocket] Connected to tactical video stream on",
+            wsUrl,
+          );
           setWsStatus("connected");
         };
 
@@ -158,10 +172,10 @@ function App() {
         const renderLatestFrame = () => {
           if (pendingBlob) {
             const url = URL.createObjectURL(pendingBlob);
-            setLiveFrame((prevUrl) => {
-              if (prevUrl) URL.revokeObjectURL(prevUrl);
-              return url;
-            });
+            const previousUrl = liveFrameUrlRef.current;
+            liveFrameUrlRef.current = url;
+            setLiveFrame(url);
+            if (previousUrl) URL.revokeObjectURL(previousUrl);
             pendingBlob = null;
           }
           rafId = null;
@@ -217,6 +231,7 @@ function App() {
   const handleSelectCamera = async (cam) => {
     if (!cam) return;
     setActiveCameraId(cam.id);
+    activeCameraIdRef.current = cam.id;
     const headers = { "Content-Type": "application/json" };
     if (userProfile.isDemo) headers["x-demo-user"] = "true";
     if (userProfile.id) headers["x-user-id"] = userProfile.id.toString();
@@ -264,8 +279,16 @@ function App() {
 
         if (userCams.length > 0) {
           const activeCam = userCams.find((c) => c.isActive) || userCams[0];
-          if (!activeCameraId) {
+          const currentCamera = userCams.find(
+            (c) => c.id === activeCameraIdRef.current,
+          );
+          const shouldFollowBackendCamera =
+            !currentCamera ||
+            (!currentCamera.isActive && activeCam.id !== currentCamera.id);
+
+          if (shouldFollowBackendCamera) {
             setActiveCameraId(activeCam.id);
+            activeCameraIdRef.current = activeCam.id;
           }
           if (!hasInitialActivatedRef.current) {
             hasInitialActivatedRef.current = true;
@@ -273,6 +296,7 @@ function App() {
           }
         } else {
           setActiveCameraId(null);
+          activeCameraIdRef.current = null;
         }
       }
     } catch (err) {
@@ -298,14 +322,16 @@ function App() {
                 c.id.toString(),
                 `CAM-${c.id}`.toUpperCase(),
                 (c.cameraName || "").toLowerCase().trim(),
-              ])
+              ]),
             );
             const userOnlyAlerts = data.alerts.filter((a) => {
               if (!a.camera_id) return false;
               const cid = a.camera_id.toString().trim();
               const cidUpper = cid.toUpperCase();
               const cidNum = cid.replace(/^CAM-/i, "").trim();
-              const spatialName = (a.spatial_coordinates?.camera_name || "").toLowerCase().trim();
+              const spatialName = (a.spatial_coordinates?.camera_name || "")
+                .toLowerCase()
+                .trim();
               return (
                 validCamIds.has(cid) ||
                 validCamIds.has(cidUpper) ||
@@ -347,7 +373,9 @@ function App() {
   const handleUploadVideoSubmit = async (e) => {
     if (e) e.preventDefault();
     if (!selectedVideoFile) {
-      setAddCamError("Please select a valid video file (.mp4, .avi, .mkv, .mov) from your device.");
+      setAddCamError(
+        "Please select a valid video file (.mp4, .avi, .mkv, .mov) from your device.",
+      );
       return;
     }
     setAddCamLoading(true);
@@ -356,11 +384,18 @@ function App() {
     try {
       const formData = new FormData();
       formData.append("video", selectedVideoFile);
-      formData.append("cameraName", newCameraName.trim() || selectedVideoFile.name);
-      formData.append("location", newLocation.trim() || "Local Recorded Patrol");
+      formData.append(
+        "cameraName",
+        newCameraName.trim() || selectedVideoFile.name,
+      );
+      formData.append(
+        "location",
+        newLocation.trim() || "Local Recorded Patrol",
+      );
       if (userProfile.isDemo) formData.append("isDemo", "true");
       if (userProfile.email) formData.append("userEmail", userProfile.email);
-      if (userProfile.fullname) formData.append("userName", userProfile.fullname);
+      if (userProfile.fullname)
+        formData.append("userName", userProfile.fullname);
       if (userProfile.rank) formData.append("userRank", userProfile.rank);
 
       const headers = {};
@@ -403,29 +438,43 @@ function App() {
     setAddCamError("");
 
     if (!newRtspLink.trim()) {
-      setAddCamError("Please provide a valid RTSP stream URL, HTTP stream, or test video file path.");
+      setAddCamError(
+        "Please provide a valid RTSP stream URL, HTTP stream, or test video file path.",
+      );
       setAddCamLoading(false);
       return;
     }
 
     // Auto-clean any accidental "ip:" typos like rtsp://ip:100.98.7.93:8080/...
-    let cleanStream = newRtspLink.trim()
+    let cleanStream = newRtspLink
+      .trim()
       .replace(/^rtsp:\/\/ip:/i, "rtsp://")
       .replace(/^rtsps:\/\/ip:/i, "rtsps://")
       .replace(/^http:\/\/ip:/i, "http://")
       .replace(/^https:\/\/ip:/i, "https://");
 
     // Auto-normalize phone camera links without protocol (e.g. 192.168.0.133:8080 or 192.168.0.133:8554)
-    if (!cleanStream.includes("://") && !cleanStream.startsWith("/") && !cleanStream.match(/^[a-zA-Z]:\\/) && !cleanStream.match(/^\d+$/)) {
+    if (
+      !cleanStream.includes("://") &&
+      !cleanStream.startsWith("/") &&
+      !cleanStream.match(/^[a-zA-Z]:\\/) &&
+      !cleanStream.match(/^\d+$/)
+    ) {
       if (cleanStream.includes(":8080")) {
         cleanStream = `http://${cleanStream}`;
-      } else if (cleanStream.includes(":8554") || cleanStream.includes(":554")) {
+      } else if (
+        cleanStream.includes(":8554") ||
+        cleanStream.includes(":554")
+      ) {
         cleanStream = `rtsp://${cleanStream}`;
       }
     }
 
     // If IP Webcam URL lacks /video path, auto-append /video
-    if (cleanStream.startsWith("http://") || cleanStream.startsWith("https://")) {
+    if (
+      cleanStream.startsWith("http://") ||
+      cleanStream.startsWith("https://")
+    ) {
       try {
         const u = new URL(cleanStream);
         if (u.port === "8080" && (u.pathname === "/" || u.pathname === "")) {
@@ -479,7 +528,9 @@ function App() {
         setNewLocation("");
         handleSelectCamera(data.camera);
       } else {
-        setAddCamError(data.error || "Failed to link camera. Please check parameters.");
+        setAddCamError(
+          data.error || "Failed to link camera. Please check parameters.",
+        );
       }
     } catch (err) {
       setAddCamError("Network error contacting camera ingestion API.");
@@ -510,9 +561,12 @@ function App() {
     // Immediately purge alerts for the removed camera so registry never glitches
     setAlerts((prev) =>
       prev.filter((a) => {
-        const alertCid = (a.camera_id || "").toString().replace(/^CAM-/i, "").trim();
+        const alertCid = (a.camera_id || "")
+          .toString()
+          .replace(/^CAM-/i, "")
+          .trim();
         return alertCid !== camId.toString();
-      })
+      }),
     );
 
     const headers = {};
@@ -554,8 +608,10 @@ function App() {
   };
 
   // Active Camera & Breach Status (declared before filter usage to avoid TDZ ReferenceError)
-  const activeCamera = cameras.find((c) => c.id === activeCameraId) || cameras[0] || null;
-  const hasRecentBreach = alerts.length > 0 && alerts.some((a) => a && a.object_type === "person");
+  const activeCamera =
+    cameras.find((c) => c.id === activeCameraId) || cameras[0] || null;
+  const hasRecentBreach =
+    alerts.length > 0 && alerts.some((a) => a && a.object_type === "person");
 
   // Filtered Alerts: strictly for the camera currently being monitored
   const activeCameraAlerts = alerts.filter((a) => {
@@ -564,7 +620,9 @@ function App() {
     const activeIdStr = activeCamera.id.toString();
     const activeUpper = `CAM-${activeIdStr}`.toUpperCase();
     const activeName = (activeCamera.cameraName || "").toLowerCase().trim();
-    const spatialName = (a.spatial_coordinates?.camera_name || "").toLowerCase().trim();
+    const spatialName = (a.spatial_coordinates?.camera_name || "")
+      .toLowerCase()
+      .trim();
 
     const alertCid = (a.camera_id || "").toString().trim();
     const alertCidUpper = alertCid.toUpperCase();
@@ -574,7 +632,8 @@ function App() {
       alertCid === activeIdStr ||
       alertCidUpper === activeUpper ||
       alertCidNum === activeIdStr ||
-      (activeName && (alertCid.toLowerCase() === activeName || spatialName === activeName))
+      (activeName &&
+        (alertCid.toLowerCase() === activeName || spatialName === activeName))
     );
   });
 
@@ -602,7 +661,10 @@ function App() {
     setAlerts([]);
     setActiveCameraId(null);
     setLiveFrame(null);
-    fetch(`${apiBase}/api/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+    fetch(`${apiBase}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
   };
 
   if (!loggedIn) {
@@ -711,7 +773,8 @@ function App() {
             <strong>MONOLITH ACTIVE</strong>
           </div>
           <div className="status-box-sub">
-            WebSocket: {wsStatus === "connected" ? "Streaming (5000)" : wsStatus}
+            WebSocket:{" "}
+            {wsStatus === "connected" ? "Streaming (5000)" : wsStatus}
           </div>
           <div className="latency-bar">
             <div className="latency-fill" style={{ width: "88%" }}></div>
@@ -732,7 +795,8 @@ function App() {
             </div>
             <h1>Netra AI Command Center</h1>
             <p className="header-subtitle">
-              Netra AI Tactical Video Analytics Platform • Border Surveillance & Perimeter Defense
+              Netra AI Tactical Video Analytics Platform • Border Surveillance &
+              Perimeter Defense
             </p>
           </div>
 
@@ -748,7 +812,9 @@ function App() {
               <div className="avatar-chip">🎖️</div>
               <div className="operator-info">
                 <strong>
-                  <span style={{ color: "#fbbf24", marginRight: "6px" }}>{userProfile.rank}</span>
+                  <span style={{ color: "#fbbf24", marginRight: "6px" }}>
+                    {userProfile.rank}
+                  </span>
                   {userProfile.fullname}
                 </strong>
                 <small>{userProfile.email}</small>
@@ -778,16 +844,26 @@ function App() {
         <div className="kpi-grid">
           {/* Card 1: Active Ingestion Stream */}
           <div className="kpi-card">
-            <div className="kpi-icon-wrap" style={{ color: "#38bdf8" }}>🎥</div>
+            <div className="kpi-icon-wrap" style={{ color: "#38bdf8" }}>
+              🎥
+            </div>
             <div className="kpi-content">
               <span className="kpi-label">ACTIVE SURVEILLANCE FEED</span>
               <div className="kpi-row">
-                <span className="kpi-value">{activeCamera ? "ONLINE" : "OFFLINE"}</span>
+                <span className="kpi-value">
+                  {activeCamera ? "ONLINE" : "OFFLINE"}
+                </span>
                 <span className="kpi-subtext">
                   {cameras.length} FEED{cameras.length === 1 ? "" : "S"} LINKED
                 </span>
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  marginTop: "4px",
+                }}
+              >
                 {activeCamera ? activeCamera.cameraName : "Standby • Link Feed"}
               </div>
             </div>
@@ -795,14 +871,24 @@ function App() {
 
           {/* Card 2: Restricted Perimeter (+6M Fence) */}
           <div className="kpi-card">
-            <div className="kpi-icon-wrap" style={{ color: "#f59e0b" }}>📐</div>
+            <div className="kpi-icon-wrap" style={{ color: "#f59e0b" }}>
+              📐
+            </div>
             <div className="kpi-content">
               <span className="kpi-label">RESTRICTED PERIMETER</span>
               <div className="kpi-row">
-                <span className="kpi-value" style={{ color: "#f59e0b" }}>+6M</span>
+                <span className="kpi-value" style={{ color: "#f59e0b" }}>
+                  +6M
+                </span>
                 <span className="kpi-subtext">TACTICAL FENCE ROI</span>
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  marginTop: "4px",
+                }}
+              >
                 Lower Screen Boundary (6m)
               </div>
             </div>
@@ -810,7 +896,9 @@ function App() {
 
           {/* Card 3: Email Notifications */}
           <div className="kpi-card">
-            <div className="kpi-icon-wrap" style={{ color: "#34d399" }}>✉️</div>
+            <div className="kpi-icon-wrap" style={{ color: "#34d399" }}>
+              ✉️
+            </div>
             <div className="kpi-content">
               <span className="kpi-label">BREACH NOTIFICATIONS</span>
               <div className="kpi-row">
@@ -834,7 +922,9 @@ function App() {
 
           {/* Card 4: Total Intrusion Alerts */}
           <div className={`kpi-card ${hasRecentBreach ? "danger-card" : ""}`}>
-            <div className="kpi-icon-wrap" style={{ color: "#f87171" }}>⚠️</div>
+            <div className="kpi-icon-wrap" style={{ color: "#f87171" }}>
+              ⚠️
+            </div>
             <div className="kpi-content">
               <span className="kpi-label">TACTICAL BREACH ALERTS</span>
               <div className="kpi-row">
@@ -843,7 +933,13 @@ function App() {
                   {hasRecentBreach ? "CRITICAL BREACH" : "PERIMETER SECURE"}
                 </span>
               </div>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  marginTop: "4px",
+                }}
+              >
                 PostgreSQL Real-Time Registry
               </div>
             </div>
@@ -863,10 +959,15 @@ function App() {
                       {activeCamera ? "LIVE RTSP STREAM" : "STANDBY"}
                     </span>
                     <span className="hud-cam-name">
-                      {activeCamera ? activeCamera.cameraName : "Awaiting Camera Link"}
+                      {activeCamera
+                        ? activeCamera.cameraName
+                        : "Awaiting Camera Link"}
                     </span>
                     <span className="hud-location">
-                      • {activeCamera ? activeCamera.location : "Perimeter Sector"}
+                      •{" "}
+                      {activeCamera
+                        ? activeCamera.location
+                        : "Perimeter Sector"}
                     </span>
                   </div>
 
@@ -901,7 +1002,8 @@ function App() {
                         STANDBY • NO RTSP FEED LINKED
                       </div>
                       <div className="placeholder-sub">
-                        Link an RTSP surveillance stream or test video to initialize live computer vision.
+                        Link an RTSP surveillance stream or test video to
+                        initialize live computer vision.
                       </div>
                       <button
                         type="button"
@@ -948,7 +1050,13 @@ function App() {
                     >
                       <div className="sec-cam-header">
                         <span className="sec-cam-title">{c.cameraName}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
                           <span className="sec-cam-badge live-ai">ACTIVE</span>
                           <button
                             type="button"
@@ -962,7 +1070,9 @@ function App() {
                       </div>
                       <div className="sec-cam-footer">
                         <strong>{c.location}</strong>
-                        <span className="click-to-view">Click to focus feed</span>
+                        <span className="click-to-view">
+                          Click to focus feed
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -987,7 +1097,9 @@ function App() {
                 <h3>Tactical Breach Registry</h3>
                 <p>Live surveillance event feed</p>
               </div>
-              <span className="alert-count-pill">{filteredAlerts.length} BREACHES</span>
+              <span className="alert-count-pill">
+                {filteredAlerts.length} BREACHES
+              </span>
             </div>
 
             {/* Alert Severity Filter Tabs */}
@@ -1012,8 +1124,12 @@ function App() {
             <div className="alerts-scroll-area">
               {filteredAlerts.length === 0 ? (
                 <div className="no-alerts-empty">
-                  <div className="shield-icon">{activeCamera ? "🛡️" : "📡"}</div>
-                  <h4>{activeCamera ? "PERIMETER SECURE" : "NO CAMERA MONITORED"}</h4>
+                  <div className="shield-icon">
+                    {activeCamera ? "🛡️" : "📡"}
+                  </div>
+                  <h4>
+                    {activeCamera ? "PERIMETER SECURE" : "NO CAMERA MONITORED"}
+                  </h4>
                   <p>
                     {activeCamera
                       ? `No unauthorized breaches detected on ${activeCamera.cameraName}.`
@@ -1048,25 +1164,35 @@ function App() {
                       <div className="alert-info-col">
                         <div className="alert-title-row">
                           <span className="alert-object">
-                            {alert.object_type ? alert.object_type.toUpperCase() : "PERSON"} BREACH
+                            {alert.object_type
+                              ? alert.object_type.toUpperCase()
+                              : "PERSON"}{" "}
+                            BREACH
                           </span>
                           <span className="alert-time">
                             {alert.event_timestamp
-                              ? new Date(alert.event_timestamp).toLocaleTimeString()
+                              ? new Date(
+                                  alert.event_timestamp,
+                                ).toLocaleTimeString()
                               : "Just Now"}
                           </span>
                         </div>
                         <div className="alert-desc">
-                          Unauthorized target crossed <strong>+6M Tactical Perimeter Fence</strong>
+                          Unauthorized target crossed{" "}
+                          <strong>+6M Tactical Perimeter Fence</strong>
                         </div>
                         <div className="alert-meta-footer">
                           <span className="badge-confidence">
-                            {!isNaN(conf) ? `${Math.round(conf * 100)}% Conf.` : "92% Conf."}
+                            {!isNaN(conf)
+                              ? `${Math.round(conf * 100)}% Conf.`
+                              : "92% Conf."}
                           </span>
                           <span>•</span>
                           <span>Track #{alert.tracking_id || "01"}</span>
                           <span>•</span>
-                          <span>{activeCamera?.cameraName || "Perimeter Cam"}</span>
+                          <span>
+                            {activeCamera?.cameraName || "Perimeter Cam"}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1101,10 +1227,14 @@ function App() {
             </button>
 
             <div className="add-camera-header">
-              <div className="add-camera-icon">{ingestMode === "video" ? "📁" : "📡"}</div>
+              <div className="add-camera-icon">
+                {ingestMode === "video" ? "📁" : "📡"}
+              </div>
               <div>
                 <h2 className="add-camera-title">
-                  {ingestMode === "video" ? "Ingest Video File" : "Ingest RTSP / Stream Link"}
+                  {ingestMode === "video"
+                    ? "Ingest Video File"
+                    : "Ingest RTSP / Stream Link"}
                 </h2>
                 <p className="add-camera-subtitle">
                   {ingestMode === "video"
@@ -1139,7 +1269,10 @@ function App() {
             </div>
 
             {ingestMode === "video" ? (
-              <form onSubmit={handleUploadVideoSubmit} className="add-camera-form">
+              <form
+                onSubmit={handleUploadVideoSubmit}
+                className="add-camera-form"
+              >
                 {/* File Dropzone */}
                 <input
                   type="file"
@@ -1149,7 +1282,9 @@ function App() {
                     if (e.target.files && e.target.files[0]) {
                       setSelectedVideoFile(e.target.files[0]);
                       if (!newCameraName) {
-                        setNewCameraName(e.target.files[0].name.replace(/\.[^/.]+$/, ""));
+                        setNewCameraName(
+                          e.target.files[0].name.replace(/\.[^/.]+$/, ""),
+                        );
                       }
                     }
                   }}
@@ -1174,22 +1309,34 @@ function App() {
                       if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                         setSelectedVideoFile(e.dataTransfer.files[0]);
                         if (!newCameraName) {
-                          setNewCameraName(e.dataTransfer.files[0].name.replace(/\.[^/.]+$/, ""));
+                          setNewCameraName(
+                            e.dataTransfer.files[0].name.replace(
+                              /\.[^/.]+$/,
+                              "",
+                            ),
+                          );
                         }
                       }
                     }}
                   >
                     <div className="dropzone-icon">🎬</div>
-                    <div className="dropzone-text">Click to Browse or Drag & Drop Video File</div>
-                    <div className="dropzone-hint">Supports MP4, AVI, MKV, MOV, WebM (up to 500MB)</div>
+                    <div className="dropzone-text">
+                      Click to Browse or Drag & Drop Video File
+                    </div>
+                    <div className="dropzone-hint">
+                      Supports MP4, AVI, MKV, MOV, WebM (up to 500MB)
+                    </div>
                   </div>
                 ) : (
                   <div className="selected-file-badge">
                     <div style={{ fontSize: "24px" }}>🎥</div>
                     <div className="selected-file-info">
-                      <div className="selected-file-name">{selectedVideoFile.name}</div>
+                      <div className="selected-file-name">
+                        {selectedVideoFile.name}
+                      </div>
                       <div className="selected-file-size">
-                        {(selectedVideoFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for AI Ingestion
+                        {(selectedVideoFile.size / (1024 * 1024)).toFixed(2)} MB
+                        • Ready for AI Ingestion
                       </div>
                     </div>
                     <button
@@ -1237,9 +1384,12 @@ function App() {
                   }}
                 >
                   <span>
-                    🛡️ <strong>Automated Protection:</strong> Real-time YOLOv8 person detection monitors the{" "}
-                    <strong>+6-meter tactical perimeter fence</strong> (covering the lower screen boundary). Any person entering the perimeter triggers
-                    alerts and emails <strong>{userProfile.email}</strong>.
+                    🛡️ <strong>Automated Protection:</strong> Real-time YOLOv8
+                    person detection monitors the{" "}
+                    <strong>+6-meter tactical perimeter fence</strong> (covering
+                    the lower screen boundary). Any person entering the
+                    perimeter triggers alerts and emails{" "}
+                    <strong>{userProfile.email}</strong>.
                   </span>
                 </div>
 
@@ -1256,7 +1406,9 @@ function App() {
                     className="login-button"
                     disabled={addCamLoading}
                   >
-                    {addCamLoading ? "Uploading & Starting AI Detection..." : "🎥 Upload & Start AI Detection"}
+                    {addCamLoading
+                      ? "Uploading & Starting AI Detection..."
+                      : "🎥 Upload & Start AI Detection"}
                   </button>
 
                   <button
@@ -1269,9 +1421,14 @@ function App() {
                 </div>
               </form>
             ) : (
-              <form onSubmit={handleAddCameraSubmit} className="add-camera-form">
+              <form
+                onSubmit={handleAddCameraSubmit}
+                className="add-camera-form"
+              >
                 <div className="input-group">
-                  <label htmlFor="cam-rtsp">RTSP Stream Link / Stream URL</label>
+                  <label htmlFor="cam-rtsp">
+                    RTSP Stream Link / Stream URL
+                  </label>
                   <input
                     id="cam-rtsp"
                     type="text"
@@ -1309,7 +1466,9 @@ function App() {
                 </div>
 
                 <div className="input-group">
-                  <label htmlFor="cam-name">Custom Stream Designation / Name</label>
+                  <label htmlFor="cam-name">
+                    Custom Stream Designation / Name
+                  </label>
                   <input
                     id="cam-name"
                     type="text"
@@ -1343,8 +1502,10 @@ function App() {
                   }}
                 >
                   <span>
-                    📱 <strong>Tip for Phone Streams:</strong> Ensure your phone & PC are on the <strong>same Wi-Fi</strong>.
-                    For Android IP Webcam app, use <code>http://&lt;phone-ip&gt;:8080/video</code>.
+                    📱 <strong>Tip for Phone Streams:</strong> Ensure your phone
+                    & PC are on the <strong>same Wi-Fi</strong>. For Android IP
+                    Webcam app, use{" "}
+                    <code>http://&lt;phone-ip&gt;:8080/video</code>.
                   </span>
                 </div>
 
@@ -1361,7 +1522,9 @@ function App() {
                     className="login-button"
                     disabled={addCamLoading}
                   >
-                    {addCamLoading ? "Initiating Stream Ingestion..." : "📡 Connect & Ingest Stream"}
+                    {addCamLoading
+                      ? "Initiating Stream Ingestion..."
+                      : "📡 Connect & Ingest Stream"}
                   </button>
 
                   <button
@@ -1380,7 +1543,9 @@ function App() {
               <div className="modal-connected-cams">
                 <div className="modal-connected-header">
                   <h4>🔗 Active Connected Feeds ({cameras.length})</h4>
-                  <span className="modal-connected-hint">Click Disconnect to remove any connection</span>
+                  <span className="modal-connected-hint">
+                    Click Disconnect to remove any connection
+                  </span>
                 </div>
                 <div className="modal-connected-list">
                   {cameras.map((c) => (
@@ -1388,10 +1553,13 @@ function App() {
                       <div className="modal-cam-info">
                         <div className="modal-cam-name">
                           {c.cameraName}
-                          {c.id === activeCameraId && <span className="active-tag">FOCUS</span>}
+                          {c.id === activeCameraId && (
+                            <span className="active-tag">FOCUS</span>
+                          )}
                         </div>
                         <div className="modal-cam-meta">
-                          {c.location || "Sector Alpha"} • {c.rtsp_link || "Video Ingest"}
+                          {c.location || "Sector Alpha"} •{" "}
+                          {c.rtsp_link || "Video Ingest"}
                         </div>
                       </div>
                       <button

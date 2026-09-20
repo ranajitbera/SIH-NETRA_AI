@@ -17,6 +17,7 @@ from app.analytics.intrusion import Zone
 from app.events.event_manager import EventManager
 
 router = APIRouter(prefix="/cameras", tags=["cameras"])
+NODE_API_URL = os.getenv("NODE_API_URL", "http://localhost:5000").rstrip("/")
 
 camera_manager = CameraManager()
 workers: dict[str, CameraWorker] = {}
@@ -159,8 +160,8 @@ def ingest_dynamic(payload: DynamicIngestRequest):
         user_email=payload.user_email,
         user_name=payload.user_name,
         user_rank=payload.user_rank,
-        broadcaster_url="http://localhost:5000/ingest",
-        api_alert_url="http://localhost:5000/api/alert",
+        broadcaster_url=f"{NODE_API_URL}/ingest",
+        api_alert_url=f"{NODE_API_URL}/api/alert",
     )
     pipeline.start()
     pipelines[camera_id] = pipeline
@@ -238,8 +239,8 @@ def start_camera(camera_id: str):
         event_manager=event_manager,
         zone=default_zone,
         camera_name=camera.name,
-        broadcaster_url="http://localhost:5000/ingest",
-        api_alert_url="http://localhost:5000/api/alert",
+        broadcaster_url=f"{NODE_API_URL}/ingest",
+        api_alert_url=f"{NODE_API_URL}/api/alert",
     )
     pipeline.start()
     pipelines[camera_id] = pipeline

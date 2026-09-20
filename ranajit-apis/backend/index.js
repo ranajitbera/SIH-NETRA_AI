@@ -30,11 +30,15 @@ const streamClients = new Set();
 wss.on("connection", (ws, req) => {
   streamClients.add(ws);
   const clientIp = req.socket.remoteAddress;
-  console.log(`[Netra AI WebSocket] Dashboard client connected (${clientIp}). Active viewers: ${streamClients.size}`);
+  console.log(
+    `[Netra AI WebSocket] Dashboard client connected (${clientIp}). Active viewers: ${streamClients.size}`,
+  );
 
   ws.on("close", () => {
     streamClients.delete(ws);
-    console.log(`[Netra AI WebSocket] Dashboard client disconnected. Active viewers: ${streamClients.size}`);
+    console.log(
+      `[Netra AI WebSocket] Dashboard client disconnected. Active viewers: ${streamClients.size}`,
+    );
   });
 
   ws.on("error", (err) => {
@@ -81,7 +85,7 @@ app.use(
   cors({
     origin: true,
     credentials: true,
-  })
+  }),
 );
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json({ limit: "15mb" }));
@@ -104,7 +108,7 @@ app.get("/api/health", (req, res) => {
 // -------------------------------------------------------------
 // 4. Consolidated Frontend Dashboard Serving
 // -------------------------------------------------------------
-const frontendDistPath = path.resolve(__dirname, "../../pritams-frontend/dist");
+const frontendDistPath = path.resolve(__dirname, "../../dist");
 app.use(express.static(frontendDistPath));
 
 app.use((req, res, next) => {

@@ -12,14 +12,32 @@ if (-not $pythonExe) {
     throw "Python was not found. Create .venv or install Python first."
 }
 
-if ([string]::IsNullOrWhiteSpace($SupabaseDatabaseUrl)) {
-    throw "Pass your Supabase connection string: .\start_free.ps1 -SupabaseDatabaseUrl 'postgresql://...'"
+if ([string]::IsNullOrWhiteSpace($SupabaseDatabaseUrl) -or $SupabaseDatabaseUrl -eq "YOUR_SUPABASE_DATABASE_URL") {
+    $SupabaseDatabaseUrl = Read-Host "Paste your Supabase connection string"
+}
+if ([string]::IsNullOrWhiteSpace($SupabaseDatabaseUrl) -or $SupabaseDatabaseUrl -eq "YOUR_SUPABASE_DATABASE_URL") {
+    throw "A real Supabase connection string is required."
 }
 
 $env:DATABASE_URL = $SupabaseDatabaseUrl
 $env:DB_SSL = "true"
 $env:PYTHON_API_URL = "http://127.0.0.1:8000"
 $env:NODE_API_URL = "http://127.0.0.1:5000"
+
+$psqlCandidates = @(
+    (Get-Command psql -ErrorAction SilentlyContinue).Source,
+    (Join-Path $env:USERPROFILE "Downloads\postgresql-18.6-4-windows-x64-binaries\pgsql\bin\psql.exe")
+)
+$psql = $psqlCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $psql) {
+    throw "psql was not found. Install a PostgreSQL client before starting the free setup."
+}
+
+Write-Host "Initializing Supabase schema..." -ForegroundColor Green
+& $psql $SupabaseDatabaseUrl -f (Join-Path $root "database-setup\postgres\init_schema.sql")
+if ($LASTEXITCODE -ne 0) {
+    throw "Supabase schema initialization failed. Check the connection string and network access."
+}
 
 function Start-ServiceProcess([string]$file, [string]$arguments, [string]$directory) {
     Start-Process -FilePath $file -ArgumentList $arguments -WorkingDirectory $directory

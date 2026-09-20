@@ -61,6 +61,10 @@ To stop all running microservices:
 .\stop_ibvap.ps1
 ```
 
+## Free Deployment
+
+For the free setup using Render Static Site, Supabase PostgreSQL, and a local Node/Python backend exposed through Cloudflare Tunnel, see [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md).
+
 ---
 
 ## 🌐 Live Access URLs
